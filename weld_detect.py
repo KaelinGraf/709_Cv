@@ -10,7 +10,7 @@ MAX_WELD_WIDTH = 0.5 #in mm
 MAX_DEV_H = 2.0 #maximum horizontal deviation speed in mm
 
 
-DEBUG = True
+DEBUG = False
 
 
 class WeldDetector:
@@ -255,7 +255,7 @@ class WeldDetectorTemplateMatching(WeldDetector):
             prediction = linear.predict(np.array([70]).reshape(-1,1))
             return prediction[0]
         elif linefit_algo == "WLEASTSQUARES":
-            wleast_squares = linear_model.WLS()
+            wleast_squares = linear_model.Ridge()
             wleast_squares.fit(eval_lines.reshape(-1,1),pred_centers)
             prediction = wleast_squares.predict(np.array([70]).reshape(-1,1))
             return prediction[0]
@@ -266,7 +266,7 @@ class WeldDetectorTemplateMatching(WeldDetector):
 
     def process_image(self,image:np.ndarray):
         eval_lines=np.arange(0,140,5)
-        pred_centers = self.extract_weld_center_line_fitting(self.rgb_to_greyscale(img=image),eval_lines=eval_lines)
+        pred_centers = self.extract_weld_center_line_fitting(self.rgb_to_greyscale(img=image),eval_lines=eval_lines,linefit_algo = "RANSAC")
         image  = self.draw_weld(image,int(pred_centers),70)
 
         cv2.imshow("Weld Center", image)
@@ -278,7 +278,7 @@ class WeldDetectorTemplateMatching(WeldDetector):
 
 
 def main():
-    images = ['WeldGapImages_export/Set 1/image0008.jpg']
+    images = ['WeldGapImages_export/Set 1/image0012.jpg']
     weld_detector = WeldDetectorTemplateMatching(images = images)
     weld_detector.process_all()
 
