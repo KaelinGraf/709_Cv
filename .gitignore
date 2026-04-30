@@ -1,2 +1,3 @@
 WeldGapImages_export/*
-templates*/*
+.claude/
+*Results*
