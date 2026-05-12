@@ -380,18 +380,21 @@ class WeldDetectorSeamDP(WeldDetector):
         interpretable as a grey-level contrast).
         """
         img = img_gray.astype(np.float32)
+        #apply gauissian blur if sigma>0, defaults to off because the matched filter already integrates over the gap width; may help under high noise.
         if self._blur_sigma > 0:
-            ksz = max(3, int(2 * round(2 * self._blur_sigma) + 1))
+            ksz = max(3, int(2 * round(2 * self._blur_sigma) + 1)) # kernel size: cover +-2 sigma, odd integer
             img = cv2.GaussianBlur(img, (ksz, ksz), self._blur_sigma)
 
-        w = self._expected_width
+        w = self._expected_width 
         s = self._shoulder_width
         kernel = np.concatenate([
             np.ones(s, dtype=np.float32),
             -np.ones(w, dtype=np.float32),
             np.ones(s, dtype=np.float32),
         ]).reshape(1, -1)
-        kernel = kernel / float(w)
+        kernel = kernel / float(w) #element wise division by width. This relies on symmetry (eg 3 pixel shoulder, 6 pixel width, sum to 0)
+        #equivalent to convolution for a symmetrical kernel
+        #The kernel summing to 0 results in the kernel producing 0 for uniformly bright sections. An output peak only occurs when interior is darker than the shoulders, in a symmetrical fashion
         contrast_resp = cv2.filter2D(img, cv2.CV_32F, kernel, borderType=cv2.BORDER_REFLECT)
         contrast_resp = np.maximum(0.0, contrast_resp)
 
@@ -405,9 +408,11 @@ class WeldDetectorSeamDP(WeldDetector):
             np.ones(w, dtype=np.float32) / float(w),
             np.zeros(s, dtype=np.float32),
         ]).reshape(1, -1)
+        #effectively: if the weld was centered on a pixel, what is the mean INTERIOR grey-level at that pixel
         mean_interior = cv2.filter2D(img, cv2.CV_32F, interior_kernel,
                                      borderType=cv2.BORDER_REFLECT)
         # Linear weight in [0, 1]: 1 for interior=0, 0 for interior >= threshold.
+        # This is effecively soft gating to account for varying lighting conditions.
         darkness_weight = np.clip(
             (self._darkness_threshold - mean_interior) / self._darkness_threshold,
             0.0, 1.0,
@@ -418,8 +423,9 @@ class WeldDetectorSeamDP(WeldDetector):
         """
         Seam-carving-style DP: find the column path from row 0 to row H-1
         of `cost` that minimises summed cost, with a per-row lateral slope
-        limit of self._max_slope. Vectorised across columns — Python only
-        loops over the H rows.
+        limit of self._max_slope. 
+        It is important to note that cost here is -likelihood, which is the result of the shoulder-minus-interior matched filter response. 
+        The seam DP finds the path of minimum cost, which corresponds to the path of maximum likelihood for the gap.
 
         args:
             cost (np.ndarray): [H x W] float32. Use cost = -likelihood
@@ -428,7 +434,7 @@ class WeldDetectorSeamDP(WeldDetector):
             (seam, total_cost) where seam is shape [H] giving the chosen
                 x at each row.
         """
-        H, W = cost.shape
+        H, W = cost.shape 
         slope = self._max_slope
         acc = np.full_like(cost, fill_value=np.inf)
         acc[0] = cost[0]
